@@ -3,6 +3,9 @@ import { MutationLog } from "./MutationLog";
 import { ReplayEngine } from "./ReplayEngine";
 import { StableEntityId } from "./StableEntityId";
 import { ProjectJSON, ScratchVMRuntime, VMOperation } from "./types";
+import { CanonicalDiff, CanonicalProject } from "./canonical/types";
+import { ProjectSerializer } from "./canonical/ProjectSerializer";
+import { ProjectDiffer } from "./canonical/ProjectDiffer";
 
 export class VMController {
   private vm: ScratchVMRuntime;
@@ -22,22 +25,18 @@ export class VMController {
 
     if (!project) {
       this.project = null;
-      // Registry session maps are stale; nameToStable intentionally persists
-      // so that a subsequent load of the same project reconnects stable IDs.
       return this;
     }
 
     this.project = structuredClone(project);
     await this.vm.loadProject(project);
 
-    // Rebuild stable <-> vm mappings now that the VM has live targets.
     this.registry.bootstrap(this.vm.runtime.targets);
 
     return this;
   }
 
   applyMutation(op: VMOperation): void {
-    // Resolve stableTargetId -> current vmId
     const vmId = this.registry.resolveVmId(op.stableTargetId);
     if (vmId === undefined) {
       throw new Error(
@@ -64,7 +63,6 @@ export class VMController {
       case "TARGET_RENAME": {
         const oldName = target.sprite.name;
         target.sprite.name = op.name;
-        // Keep registry in sync so the next bootstrap() reconnects correctly.
         this.registry.notifyRenamed(op.stableTargetId, oldName, op.name);
         break;
       }
@@ -82,17 +80,40 @@ export class VMController {
         throw new Error(`Unknown VM operation: ${(op as any).type}`);
     }
 
-    // Only record after successful application.
     this.log.record(op);
   }
 
-  /** Export the current VM state as a project JSON. */
+  /**
+   * Export the current VM state as a plain object.
+   *
+   * scratch-vm's toJSON() returns a JSON string. We always parse it here so
+   * every caller downstream receives a consistent plain object — never a string.
+   */
   serialize(): ProjectJSON {
     if (!this.vm) throw new Error("VM instance not provided!");
-    return this.vm.toJSON();
+
+    const raw = this.vm.toJSON();
+    return typeof raw === "string" ? JSON.parse(raw) : raw;
   }
 
-  /** Verify that serialize -> reload -> serialize produces identical output. */
+  /**
+   * Export the current VM state as a CanonicalProject.
+   * Preferred form for storage, diffing, and collaboration.
+   */
+  toCanonical(): CanonicalProject {
+    const serializer = new ProjectSerializer(this.registry);
+    return serializer.serialize(this.serialize());
+  }
+
+  /**
+   * Diff the current VM state against a base CanonicalProject.
+   */
+  diffAgainst(base: CanonicalProject): CanonicalDiff {
+    const differ = new ProjectDiffer();
+    return differ.diff(base, this.toCanonical());
+  }
+
+  /** Verify that serialize → reload → serialize produces identical output. */
   async roundTrip(project: ProjectJSON): Promise<{ equal: boolean }> {
     await this.load(project);
     const a = this.serialize();

@@ -46,11 +46,21 @@ export class EntityRegistry {
     return this.vmToStable.get(vmId);
   }
 
+  /**
+   * Look up a stable ID by sprite name.
+   * Used by ProjectSerializer to inject stableIds without a live VM session.
+   */
+  resolveStableIdByName(name: string): StableEntityId | undefined {
+    return this.nameToStable.get(name);
+  }
+
   notifyRenamed(
     stableId: StableEntityId,
     oldName: string,
     newName: string,
   ): void {
+    // Keep both names so bootstrap() can reconnect across reloads.
+    // See EntityRegistry.notifyRenamed() comment for full explanation.
     this.nameToStable.set(oldName, stableId);
     this.nameToStable.set(newName, stableId);
   }
@@ -79,7 +89,6 @@ export class EntityRegistry {
         if (t?.sprite?.name) name = t.sprite.name;
       }
       if (name === "unknown") {
-        // Walk nameToStable to find a name for this stableId.
         for (const [n, sid] of this.nameToStable) {
           if (sid === stableId) {
             name = n;
@@ -91,7 +100,7 @@ export class EntityRegistry {
       result.push({ stableId, vmId, name });
     }
 
-    // include stage
+    // Include stage
     const stageVmId = this.stableToVm.get(STAGE_STABLE_ID);
     if (stageVmId !== undefined) {
       result.push({
@@ -104,8 +113,6 @@ export class EntityRegistry {
     return result;
   }
 
-  // Debug dump
-  // never use this for logic
   debug(): {
     stableToVm: Record<string, string>;
     nameToStable: Record<string, string>;
