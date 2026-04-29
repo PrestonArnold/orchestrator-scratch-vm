@@ -71,4 +71,15 @@ export class VMController {
         throw new Error(`Unknown VM operation!`);
     }
   }
+
+  // Export VM state -> project JSON (canonical snapshot of state)
+  serialize(): ProjectJSON {
+    if (!this.vm) throw new Error("VM instance not provided!");
+
+    const project = this.vm.toJSON();
+
+    this.project = structuredClone(project);
+
+    return project;
+  }
 }
