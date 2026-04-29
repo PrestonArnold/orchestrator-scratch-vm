@@ -101,4 +101,12 @@ export class VMController {
       equal: first === second,
     };
   }
+
+  getVM() {
+    return this.vm;
+  }
+
+  getProject() {
+    return this.project;
+  }
 }
