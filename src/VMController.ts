@@ -82,4 +82,23 @@ export class VMController {
 
     return project;
   }
+
+  // Round trip correctness check
+  // This isn't good at all, but it's a start
+  async roundTrip(project: ProjectJSON) {
+    await this.load(project);
+
+    const firstRaw = this.serialize();
+    await this.load(firstRaw);
+    const first = JSON.stringify(firstRaw);
+
+    const secondRaw = this.serialize();
+    const second = JSON.stringify(secondRaw);
+
+    return {
+      first,
+      second,
+      equal: first === second,
+    };
+  }
 }
