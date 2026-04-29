@@ -5,7 +5,12 @@ import {
   CanonicalTarget,
   CanonicalVariable,
 } from "./types";
-import { BlockDiffer, BlockChange, BlockGraphDiff, InputChange } from "./ProjectDiffer";
+import {
+  BlockDiffer,
+  BlockChange,
+  BlockGraphDiff,
+  InputChange,
+} from "./ProjectDiffer";
 
 // ─── Merge result types ───────────────────────────────────────────────────────
 
@@ -20,7 +25,7 @@ export type BlockConflict = {
   /** The specific key within that aspect (e.g. field name, input name) */
   key: string;
   base: unknown;
-  ours: unknown;   // branch A
+  ours: unknown; // branch A
   theirs: unknown; // branch B
 };
 
@@ -62,8 +67,8 @@ export class ProjectMerger {
   ): ProjectMergeResult {
     const allConflicts: BlockConflict[] = [];
 
-    const baseMap  = this.targetMap(base);
-    const oursMap  = this.targetMap(ours);
+    const baseMap = this.targetMap(base);
+    const oursMap = this.targetMap(ours);
     const theirsMap = this.targetMap(theirs);
 
     const allIds = new Set([
@@ -75,19 +80,28 @@ export class ProjectMerger {
     const mergedTargets: CanonicalTarget[] = [];
 
     for (const id of allIds) {
-      const b = baseMap.get(id)   ?? null;
-      const o = oursMap.get(id)   ?? null;
+      const b = baseMap.get(id) ?? null;
+      const o = oursMap.get(id) ?? null;
       const t = theirsMap.get(id) ?? null;
 
       // ── Removals ──────────────────────────────────────────────────────────
-      if (!o && !t) continue;         // removed by both → gone
-      if (!o && b)  continue;         // removed by ours → gone
-      if (!t && b)  continue;         // removed by theirs → gone
+      if (!o && !t) continue; // removed by both → gone
+      if (!o && b) continue; // removed by ours → gone
+      if (!t && b) continue; // removed by theirs → gone
 
       // ── Additions (not in base) ────────────────────────────────────────────
-      if (!b && o && !t) { mergedTargets.push(o); continue; }
-      if (!b && !o && t) { mergedTargets.push(t); continue; }
-      if (!b && o && t)  { mergedTargets.push(o); continue; } // both added → take ours
+      if (!b && o && !t) {
+        mergedTargets.push(o);
+        continue;
+      }
+      if (!b && !o && t) {
+        mergedTargets.push(t);
+        continue;
+      }
+      if (!b && o && t) {
+        mergedTargets.push(o);
+        continue;
+      } // both added → take ours
 
       // ── Present in base: 3-way merge ──────────────────────────────────────
       const { target, conflicts } = this.mergeTarget(b!, o!, t!);
@@ -125,14 +139,18 @@ export class ProjectMerger {
 
     // ── Scalar target fields ──────────────────────────────────────────────────
     const name = this.mergeScalar(base.name, ours.name, theirs.name);
-    const x    = this.mergeScalar(base.x,    ours.x,    theirs.x);
-    const y    = this.mergeScalar(base.y,    ours.y,    theirs.y);
+    const x = this.mergeScalar(base.x, ours.x, theirs.x);
+    const y = this.mergeScalar(base.y, ours.y, theirs.y);
 
     // ── Variables ─────────────────────────────────────────────────────────────
-    const variables = this.mergeVariables(base.variables, ours.variables, theirs.variables);
+    const variables = this.mergeVariables(
+      base.variables,
+      ours.variables,
+      theirs.variables,
+    );
 
     // ── Blocks ────────────────────────────────────────────────────────────────
-    const diffOurs   = this.blockDiffer.diff(base.blocks, ours.blocks);
+    const diffOurs = this.blockDiffer.diff(base.blocks, ours.blocks);
     const diffTheirs = this.blockDiffer.diff(base.blocks, theirs.blocks);
 
     const { blocks, blockConflicts } = this.mergeBlocks(
@@ -170,15 +188,18 @@ export class ProjectMerger {
     theirsBlocks: Record<string, CanonicalBlock>,
     diffOurs: BlockGraphDiff | null,
     diffTheirs: BlockGraphDiff | null,
-  ): { blocks: Record<string, CanonicalBlock>; blockConflicts: BlockConflict[] } {
+  ): {
+    blocks: Record<string, CanonicalBlock>;
+    blockConflicts: BlockConflict[];
+  } {
     const conflicts: BlockConflict[] = [];
 
     // Work from a shallow copy of base
     const result: Record<string, CanonicalBlock> = { ...base };
 
-    const oAdded   = new Set(diffOurs?.added   ?? []);
-    const tAdded   = new Set(diffTheirs?.added  ?? []);
-    const oRemoved = new Set(diffOurs?.removed  ?? []);
+    const oAdded = new Set(diffOurs?.added ?? []);
+    const tAdded = new Set(diffTheirs?.added ?? []);
+    const oRemoved = new Set(diffOurs?.removed ?? []);
     const tRemoved = new Set(diffTheirs?.removed ?? []);
 
     const oMods = new Map<string, BlockChange>(
@@ -221,7 +242,11 @@ export class ProjectMerger {
         // Already added by ours — check for divergence
         const oBlock = oursBlocks[id];
         const tBlock = theirsBlocks[id];
-        if (oBlock && tBlock && JSON.stringify(oBlock) !== JSON.stringify(tBlock)) {
+        if (
+          oBlock &&
+          tBlock &&
+          JSON.stringify(oBlock) !== JSON.stringify(tBlock)
+        ) {
           // Both added the same ID with different content — keep ours (already set)
           // No block-level conflict raised; callers can inspect at a higher level.
         }
@@ -253,6 +278,8 @@ export class ProjectMerger {
         const { block, blockConflicts } = this.mergeBlockChanges(
           id,
           result[id],
+          oursBlocks[id],
+          theirsBlocks[id],
           oChange,
           tChange,
         );
@@ -274,6 +301,8 @@ export class ProjectMerger {
   private mergeBlockChanges(
     id: string,
     base: CanonicalBlock,
+    oursBlock: CanonicalBlock,
+    theirsBlock: CanonicalBlock,
     ours: BlockChange,
     theirs: BlockChange,
   ): { block: CanonicalBlock; blockConflicts: BlockConflict[] } {
@@ -284,13 +313,17 @@ export class ProjectMerger {
     if (ours.opcode || theirs.opcode) {
       const oOp = ours.opcode?.to;
       const tOp = theirs.opcode?.to;
-      if (oOp && !tOp)              block.opcode = oOp;
-      else if (!oOp && tOp)         block.opcode = tOp;
+      if (oOp && !tOp) block.opcode = oOp;
+      else if (!oOp && tOp) block.opcode = tOp;
       else if (oOp && tOp && oOp === tOp) block.opcode = oOp;
       else if (oOp && tOp && oOp !== tOp) {
         blockConflicts.push({
-          blockId: id, aspect: "opcode", key: "opcode",
-          base: base.opcode, ours: oOp, theirs: tOp,
+          blockId: id,
+          aspect: "opcode",
+          key: "opcode",
+          base: base.opcode,
+          ours: oOp,
+          theirs: tOp,
         });
         // base value kept (block.opcode unchanged)
       }
@@ -298,7 +331,7 @@ export class ProjectMerger {
 
     // ── Fields ────────────────────────────────────────────────────────────────
     const allFieldKeys = new Set([
-      ...Object.keys(ours.fields  ?? {}),
+      ...Object.keys(ours.fields ?? {}),
       ...Object.keys(theirs.fields ?? {}),
     ]);
     const fields = { ...base.fields };
@@ -314,8 +347,12 @@ export class ProjectMerger {
           fields[key] = oField;
         } else {
           blockConflicts.push({
-            blockId: id, aspect: "field", key,
-            base: base.fields[key], ours: oField, theirs: tField,
+            blockId: id,
+            aspect: "field",
+            key,
+            base: base.fields[key],
+            ours: oField,
+            theirs: tField,
           });
           // base value kept
         }
@@ -325,7 +362,7 @@ export class ProjectMerger {
 
     // ── Inputs ────────────────────────────────────────────────────────────────
     const allInputKeys = new Set([
-      ...Object.keys(ours.inputs  ?? {}),
+      ...Object.keys(ours.inputs ?? {}),
       ...Object.keys(theirs.inputs ?? {}),
     ]);
     const inputs = { ...base.inputs };
@@ -340,13 +377,21 @@ export class ProjectMerger {
         if (JSON.stringify(oInput) === JSON.stringify(tInput)) {
           inputs[key] = this.applyInputChange(base.inputs[key], oInput);
         } else {
-          // Store the resolved CanonicalBlockInput arrays (not the InputChange objects)
-          // so ConflictResolver can write them directly into block.inputs[key].
-          const oResolved = this.applyInputChange(base.inputs[key], oInput);
-          const tResolved = this.applyInputChange(base.inputs[key], tInput);
+          // Store the actual resolved input tuples (not the InputChange deltas)
+          // so that ConflictResolver.pickValue() returns the correct final values.
+          const oursValue =
+            oursBlock?.inputs[key] ??
+            this.applyInputChange(base.inputs[key], oInput);
+          const theirsValue =
+            theirsBlock?.inputs[key] ??
+            this.applyInputChange(base.inputs[key], tInput);
           blockConflicts.push({
-            blockId: id, aspect: "input", key,
-            base: base.inputs[key], ours: oResolved, theirs: tResolved,
+            blockId: id,
+            aspect: "input",
+            key,
+            base: base.inputs[key],
+            ours: oursValue,
+            theirs: theirsValue,
           });
           // base value kept
         }
@@ -355,8 +400,8 @@ export class ProjectMerger {
     block.inputs = inputs;
 
     // ── Structure (next / parent) ─────────────────────────────────────────────
-    const oNext   = ours.structure?.next;
-    const tNext   = theirs.structure?.next;
+    const oNext = ours.structure?.next;
+    const tNext = theirs.structure?.next;
     const oParent = ours.structure?.parent;
     const tParent = theirs.structure?.parent;
 
@@ -365,14 +410,19 @@ export class ProjectMerger {
       const tVal = tNext?.to;
       const oDefined = oNext !== undefined;
       const tDefined = tNext !== undefined;
-      if (oDefined && !tDefined)          block.next = oVal ?? null;
-      else if (!oDefined && tDefined)     block.next = tVal ?? null;
+      if (oDefined && !tDefined) block.next = oVal ?? null;
+      else if (!oDefined && tDefined) block.next = tVal ?? null;
       else if (oDefined && tDefined) {
         if (oVal === tVal) block.next = oVal ?? null;
-        else blockConflicts.push({
-          blockId: id, aspect: "structure", key: "next",
-          base: base.next, ours: oVal, theirs: tVal,
-        });
+        else
+          blockConflicts.push({
+            blockId: id,
+            aspect: "structure",
+            key: "next",
+            base: base.next,
+            ours: oVal,
+            theirs: tVal,
+          });
       }
     }
 
@@ -381,21 +431,29 @@ export class ProjectMerger {
       const tVal = tParent?.to;
       const oDefined = oParent !== undefined;
       const tDefined = tParent !== undefined;
-      if (oDefined && !tDefined)          block.parent = oVal ?? null;
-      else if (!oDefined && tDefined)     block.parent = tVal ?? null;
+      if (oDefined && !tDefined) block.parent = oVal ?? null;
+      else if (!oDefined && tDefined) block.parent = tVal ?? null;
       else if (oDefined && tDefined) {
         if (oVal === tVal) block.parent = oVal ?? null;
-        else blockConflicts.push({
-          blockId: id, aspect: "structure", key: "parent",
-          base: base.parent, ours: oVal, theirs: tVal,
-        });
+        else
+          blockConflicts.push({
+            blockId: id,
+            aspect: "structure",
+            key: "parent",
+            base: base.parent,
+            ours: oVal,
+            theirs: tVal,
+          });
       }
     }
 
     return { block, blockConflicts };
   }
 
-  private applyBlockChange(block: CanonicalBlock, change: BlockChange): CanonicalBlock {
+  private applyBlockChange(
+    block: CanonicalBlock,
+    change: BlockChange,
+  ): CanonicalBlock {
     const result = { ...block };
 
     if (change.opcode) result.opcode = change.opcode.to;
@@ -415,8 +473,10 @@ export class ProjectMerger {
     }
 
     if (change.structure) {
-      if (change.structure.next   !== undefined) result.next   = change.structure.next.to;
-      if (change.structure.parent !== undefined) result.parent = change.structure.parent.to;
+      if (change.structure.next !== undefined)
+        result.next = change.structure.next.to;
+      if (change.structure.parent !== undefined)
+        result.parent = change.structure.parent.to;
     }
 
     return result;
@@ -428,7 +488,10 @@ export class ProjectMerger {
   ): CanonicalBlock["inputs"][string] {
     if (!current) return current;
     const updated = [...current] as typeof current;
-    if (change.kind === "value_changed" || change.kind === "connection_changed") {
+    if (
+      change.kind === "value_changed" ||
+      change.kind === "connection_changed"
+    ) {
       (updated as any)[1] = change.to;
     }
     return updated;
@@ -450,13 +513,28 @@ export class ProjectMerger {
       const t = theirs[id];
 
       // Removed on one or both sides
-      if (!o && !t) { delete result[id]; continue; }
-      if (!o &&  b) { delete result[id]; continue; } // ours removed it
-      if (!t &&  b) { delete result[id]; continue; } // theirs removed it
+      if (!o && !t) {
+        delete result[id];
+        continue;
+      }
+      if (!o && b) {
+        delete result[id];
+        continue;
+      } // ours removed it
+      if (!t && b) {
+        delete result[id];
+        continue;
+      } // theirs removed it
 
       // Added (not in base)
-      if (!b && o) { result[id] = o; continue; }
-      if (!b && t) { result[id] = t; continue; }
+      if (!b && o) {
+        result[id] = o;
+        continue;
+      }
+      if (!b && t) {
+        result[id] = t;
+        continue;
+      }
 
       // Present in both: if identical, keep; otherwise prefer ours.
       // A proper variable diff would track base→ours and base→theirs value
@@ -478,18 +556,20 @@ export class ProjectMerger {
    *   both changed to different values → return undefined (caller keeps base)
    */
   private mergeScalar<T>(base: T, ours: T, theirs: T): T | undefined {
-    const oChanged = ours   !== base;
+    const oChanged = ours !== base;
     const tChanged = theirs !== base;
     if (!oChanged && !tChanged) return base;
-    if ( oChanged && !tChanged) return ours;
-    if (!oChanged &&  tChanged) return theirs;
-    if (ours === theirs)        return ours;   // both changed to same value
-    return undefined;                          // genuine conflict — caller keeps base
+    if (oChanged && !tChanged) return ours;
+    if (!oChanged && tChanged) return theirs;
+    if (ours === theirs) return ours; // both changed to same value
+    return undefined; // genuine conflict — caller keeps base
   }
 
   // ─── Helpers ─────────────────────────────────────────────────────────────
 
-  private targetMap(project: CanonicalProject): Map<StableEntityId, CanonicalTarget> {
+  private targetMap(
+    project: CanonicalProject,
+  ): Map<StableEntityId, CanonicalTarget> {
     return new Map(project.targets.map((t) => [t.stableId, t]));
   }
 }
