@@ -21,3 +21,35 @@ export type VMOperation =
       targetId: string;
       name: string;
     };
+
+// scratch types
+export interface ScratchTarget {
+  id: string;
+  x: number;
+  y: number;
+
+  sprite: {
+    name: string;
+  };
+
+  blocks: {
+    getBlock(id: string): ScratchBlock | undefined;
+  };
+}
+
+export interface ScratchBlock {
+  id: string;
+  opcode: string;
+  fields?: Record<string, any>;
+}
+
+export interface ScratchVMRuntime {
+  loadProject(project: any): Promise<void> | void;
+  clear?: () => Promise<void>;
+
+  runtime: {
+    getTargetById(id: string): ScratchTarget | undefined;
+  };
+
+  toJSON(): any;
+}

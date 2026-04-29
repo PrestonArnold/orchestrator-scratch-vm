@@ -1,10 +1,10 @@
-import { ProjectJSON, VMOperation } from "./types";
+import { ProjectJSON, ScratchVMRuntime, VMOperation } from "./types";
 
 export class VMController {
-  private vm: any;
+  private vm: ScratchVMRuntime;
   private project: ProjectJSON | null = null;
 
-  constructor(vmInstance: any) {
+  constructor(vmInstance: ScratchVMRuntime) {
     this.vm = vmInstance;
   }
 
@@ -37,6 +37,7 @@ export class VMController {
 
     switch (op.type) {
       case "TARGET_MOVE":
+        const target = runtime.getTargetById(op.targetId);
     }
   }
 }
