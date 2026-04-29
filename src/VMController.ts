@@ -1,8 +1,10 @@
+import { MutationLog } from "./MutationLog";
 import { ProjectJSON, ScratchVMRuntime, VMOperation } from "./types";
 
 export class VMController {
   private vm: ScratchVMRuntime;
   private project: ProjectJSON | null = null;
+  private log = new MutationLog();
 
   constructor(vmInstance: ScratchVMRuntime) {
     this.vm = vmInstance;
@@ -33,6 +35,8 @@ export class VMController {
   // Apply controlled mutation to the VM state
   // Future: feed diff + collab layer
   applyMutation(op: VMOperation) {
+    this.log.record(op);
+
     const runtime = this.vm.runtime;
 
     switch (op.type) {
@@ -61,7 +65,7 @@ export class VMController {
         const block = target.blocks.getBlock(op.blockId);
         if (!block) throw new Error(`Block not found: ${op.blockId}`);
 
-        if (!block.fields) block.fields = {};
+        block.fields ??= {};
         block.fields[op.field] = op.value;
 
         break;
@@ -108,5 +112,9 @@ export class VMController {
 
   getProject() {
     return this.project;
+  }
+
+  getMutationLog() {
+    return this.log.getAll();
   }
 }
