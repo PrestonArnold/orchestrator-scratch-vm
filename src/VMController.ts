@@ -36,8 +36,39 @@ export class VMController {
     const runtime = this.vm.runtime;
 
     switch (op.type) {
-      case "TARGET_MOVE":
+      case "TARGET_MOVE": {
         const target = runtime.getTargetById(op.targetId);
+        if (!target) throw new Error(`Target not found: ${op.targetId}`);
+
+        if (op.x !== undefined) target.x = op.x;
+        if (op.y !== undefined) target.y = op.y;
+
+        break;
+      }
+
+      case "TARGET_RENAME": {
+        const target = runtime.getTargetById(op.targetId);
+        if (!target) throw new Error(`Target not found: ${op.targetId}`);
+
+        target.sprite.name = op.name;
+        break;
+      }
+
+      case "BLOCK_SET_VALUE": {
+        const target = runtime.getTargetById(op.targetId);
+        if (!target) throw new Error(`Target not found: ${op.targetId}`);
+
+        const block = target.blocks.getBlock(op.blockId);
+        if (!block) throw new Error(`Block not found: ${op.blockId}`);
+
+        if (!block.fields) block.fields = {};
+        block.fields[op.field] = op.value;
+
+        break;
+      }
+
+      default:
+        throw new Error(`Unknown VM operation!`);
     }
   }
 }
