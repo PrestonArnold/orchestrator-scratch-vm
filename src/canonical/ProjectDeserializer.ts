@@ -38,7 +38,7 @@ export class ProjectDeserializer {
       costumes: rest.costumes,
       sounds: rest.sounds,
       volume: rest.volume,
-      layerOrder: rest.layerOrder,
+      layerOrder: rest.isStage ? rest.layerOrder : Math.max(1, rest.layerOrder ?? 1),
     };
 
     if (rest.isStage) {

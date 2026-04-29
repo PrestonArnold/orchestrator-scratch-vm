@@ -5,6 +5,7 @@ import { StableEntityId } from "./StableEntityId";
 import { ProjectJSON, ScratchTarget, ScratchVMRuntime, VMOperation } from "./types";
 import { CanonicalDiff, CanonicalProject } from "./canonical/types";
 import { ProjectSerializer } from "./canonical/ProjectSerializer";
+import { ProjectDeserializer } from "./canonical/ProjectDeserializer";
 import { ProjectDiffer } from "./canonical/ProjectDiffer";
 
 export class VMController {
@@ -29,10 +30,33 @@ export class VMController {
     }
 
     this.project = structuredClone(project);
-    await this.vm.loadProject(project);
+    await this.vm.loadProject(JSON.stringify(project));
     this.registry.bootstrap(this.vm.runtime.targets);
 
     return this;
+  }
+
+  /**
+   * Load the VM from a CanonicalProject snapshot.
+   *
+   * Preferred over load() when restoring from a git checkout or any
+   * canonical source, because it preserves the stable IDs embedded in
+   * the snapshot rather than minting new ones.
+   *
+   * Sequence:
+   *   1. Seed registry.nameToStable from canonical stableIds (before load)
+   *   2. Deserialize canonical → VM JSON
+   *   3. load(vmJson) → vm.loadProject() + registry.bootstrap()
+   *
+   * bootstrap() clears stableToVm/vmToStable but keeps nameToStable, so
+   * the seed in step 1 survives and reconnects the correct IDs by name.
+   */
+  async loadCanonical(project: CanonicalProject): Promise<this> {
+    // Step 1: seed stable IDs so bootstrap() reconnects them correctly
+    this.registry.bootstrapFromCanonical(project.targets);
+    // Step 2+3: deserialize → load (calls bootstrap() internally)
+    const vmJson = new ProjectDeserializer().deserialize(project);
+    return this.load(vmJson);
   }
 
   applyMutation(op: VMOperation): void {

@@ -114,7 +114,6 @@ export class GitAdapter {
    */
   commit(message: string): GitCommitResult {
     this.git("add -A");
-    // Escape the message for the shell
     this.git(`commit -m ${shellQuote(message)} --allow-empty`);
     const hash = this.git("rev-parse HEAD").trim();
     const shortHash = this.git("rev-parse --short HEAD").trim();
@@ -156,8 +155,6 @@ export class GitAdapter {
    * Current branch name. Returns "HEAD" in detached-head state.
    */
   currentBranch(): string {
-    // symbolic-ref works even before the first commit; rev-parse --abbrev-ref
-    // requires HEAD to resolve (i.e. at least one commit exists).
     const ref = this.git("symbolic-ref HEAD").trim(); // → refs/heads/master
     return ref.replace(/^refs\/heads\//, "");
   }
@@ -178,7 +175,6 @@ export class GitAdapter {
 
   /**
    * `git diff --stat` between two refs — human-readable change summary.
-   * Example: stat("HEAD~1", "HEAD")
    */
   diffStat(from: string, to: string): string {
     return this.git(`diff --stat ${from}..${to}`);
@@ -217,6 +213,21 @@ export class GitAdapter {
     return this.git(`rev-parse ${ref}`).trim();
   }
 
+  /**
+   * Find the common ancestor of two refs (git merge-base).
+   * Returns the full commit hash of the merge base.
+   *
+   * Used by MergeSession to locate the base project for 3-way merge.
+   */
+  mergeBase(ref1: string, ref2: string): string {
+    return this.git(`merge-base ${ref1} ${ref2}`).trim();
+  }
+
+  /** @internal — called by MergeSession via duck-typing */
+  _mergeBase(ref1: string, ref2: string): string {
+    return this.mergeBase(ref1, ref2);
+  }
+
   // ─── Internal ──────────────────────────────────────────────────────────────
 
   private git(command: string): string {
@@ -237,7 +248,7 @@ export class GitAdapter {
   }
 
   private readWorkingTree(): CanonicalProject {
-    const meta = this.readJson("meta.json") as any;
+    const meta  = this.readJson("meta.json") as any;
     const stage = this.readJson("stage.json") as CanonicalTarget;
     const targets: CanonicalTarget[] = [stage];
 
@@ -259,18 +270,16 @@ export class GitAdapter {
   private readAtRef(ref: string): CanonicalProject {
     const showFile = (path: string): unknown | null => {
       try {
-        // git show uses forward slashes even on Windows
         return JSON.parse(this.git(`show ${ref}:${path.replace(/\\/g, "/")}`));
       } catch {
         return null;
       }
     };
 
-    const meta = (showFile("meta.json") ?? {}) as any;
+    const meta  = (showFile("meta.json") ?? {}) as any;
     const stage = showFile("stage.json") as CanonicalTarget | null;
     const targets: CanonicalTarget[] = stage ? [stage] : [];
 
-    // List sprite files at this ref without touching working tree
     try {
       const listing = this.git(`ls-tree --name-only ${ref} sprites/`).trim();
       for (const filePath of listing.split("\n").filter(Boolean)) {
@@ -290,11 +299,6 @@ export class GitAdapter {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-/**
- * Shell-quote a string so it's safe to embed in a git command.
- * Handles the common cases: quotes, backslashes, newlines.
- */
 function shellQuote(str: string): string {
-  // Use double quotes and escape internal double quotes + backslashes
   return `"${str.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
 }

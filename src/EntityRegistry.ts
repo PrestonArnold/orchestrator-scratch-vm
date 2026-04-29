@@ -12,6 +12,24 @@ export class EntityRegistry {
 
   private nameToStable = new Map<string, StableEntityId>();
 
+  /**
+   * Seed nameToStable from a canonical snapshot's embedded stableIds.
+   *
+   * Call this BEFORE bootstrap() when loading from a canonical project
+   * (e.g. after a git checkout). bootstrap() preserves nameToStable, so
+   * seeding here ensures it reconnects the correct stable IDs by name
+   * instead of minting fresh ones.
+   *
+   * Without this, checking out a renamed sprite would give it a new
+   * stableId, breaking any held references.
+   */
+  bootstrapFromCanonical(targets: Array<{ isStage: boolean; name: string; stableId: StableEntityId }>): void {
+    for (const target of targets) {
+      if (target.isStage) continue; // stage always uses STAGE_STABLE_ID
+      this.nameToStable.set(target.name, target.stableId);
+    }
+  }
+
   bootstrap(targets: ScratchTarget[]): void {
     // Only clear the per-session maps; nameToStable is intentionally persistent.
     this.stableToVm.clear();

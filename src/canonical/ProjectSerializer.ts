@@ -37,10 +37,12 @@ export class ProjectSerializer {
       (m: any) => this.serializeMonitor(m),
     );
 
+    const vm = vmJson.meta?.vm ?? "";
+    const agent = vmJson.meta?.agent ?? "";
     const meta: CanonicalMeta = {
       semver: vmJson.meta?.semver ?? "3.0.0",
-      vm: vmJson.meta?.vm ?? "",
-      agent: vmJson.meta?.agent ?? "",
+      ...(vm ? { vm } : {}),
+      ...(agent ? { agent } : {}),
       ...(vmJson.meta?.platform ? { platform: vmJson.meta.platform } : {}),
     };
 
@@ -74,7 +76,7 @@ export class ProjectSerializer {
       costumes: (raw.costumes ?? []).map((c: any) => this.serializeCostume(c)),
       sounds: (raw.sounds ?? []).map((s: any) => this.serializeSound(s)),
       volume: raw.volume ?? 100,
-      layerOrder: raw.layerOrder ?? 0,
+      layerOrder: raw.isStage ? (raw.layerOrder ?? 0) : Math.max(1, raw.layerOrder ?? 1),
     };
 
     if (raw.isStage) {

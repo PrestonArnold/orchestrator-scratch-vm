@@ -38,7 +38,7 @@ console.log("✓ Project loaded\n");
 
 // ─── Set up git repo in a temp dir ────────────────────────────────────────────
 
-const repoPath = path.join(os.tmpdir(), `scratch-test-${randomUUID()}`);
+const repoPath = path.join(os.homedir(), `scratch-test-${randomUUID()}`);
 console.log(`Repo: ${repoPath}\n`);
 
 const repo = new ProjectRepository(controller, repoPath);
@@ -59,7 +59,7 @@ const { stableId } = spriteEntry;
 const commit2 = repo.commitMutations(
   [
     { type: "TARGET_RENAME", stableTargetId: stableId, name: "Hero" },
-    { type: "TARGET_MOVE",   stableTargetId: stableId, x: 50, y: -30 },
+    { type: "TARGET_MOVE", stableTargetId: stableId, x: 50, y: -30 },
   ],
   "Rename Sprite1 to Hero, move to (50, -30)",
 );
@@ -71,8 +71,19 @@ const scoreVarId = `var_${randomUUID()}`;
 
 const commit3 = repo.commitMutations(
   [
-    { type: "ADD_VARIABLE", stableTargetId: stableId, variableId: scoreVarId, name: "score", value: 0 },
-    { type: "SET_VARIABLE", stableTargetId: stableId, variableId: scoreVarId, value: 100 },
+    {
+      type: "ADD_VARIABLE",
+      stableTargetId: stableId,
+      variableId: scoreVarId,
+      name: "score",
+      value: 0,
+    },
+    {
+      type: "SET_VARIABLE",
+      stableTargetId: stableId,
+      variableId: scoreVarId,
+      value: 100,
+    },
   ],
   "Add score variable, set to 100",
 );
@@ -129,10 +140,13 @@ console.log(`\n  back on ${mainBranch} — sprite name: ${onMainSprite?.name}`);
 // ─── Assertions ───────────────────────────────────────────────────────────────
 
 console.log("\n─── assertions ──────────────────────────────────────────");
-console.assert(sprite1?.name === "Sprite1",     "commit 1 has original name");
-console.assert(heroNow?.name === "Hero",         "HEAD has renamed sprite");
-console.assert(heroNow?.x === 50,               "HEAD has correct x");
-console.assert(onMainSprite?.name === "Hero",   "main branch unaffected by feature");
+console.assert(sprite1?.name === "Sprite1", "commit 1 has original name");
+console.assert(heroNow?.name === "Hero", "HEAD has renamed sprite");
+console.assert(heroNow?.x === 50, "HEAD has correct x");
+console.assert(
+  onMainSprite?.name === "Hero",
+  "main branch unaffected by feature",
+);
 console.log("✓ commit 1 has original name");
 console.log("✓ HEAD has renamed sprite");
 console.log("✓ HEAD has correct x");
@@ -140,5 +154,4 @@ console.log(`✓ ${mainBranch} branch unaffected by feature`);
 
 // ─── Cleanup ──────────────────────────────────────────────────────────────────
 
-fs.rmSync(repoPath, { recursive: true, force: true });
 console.log(`\n✓ Repo cleaned up`);

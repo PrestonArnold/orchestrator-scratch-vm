@@ -29,8 +29,8 @@ export interface CanonicalProject {
 
 export interface CanonicalMeta {
   semver: string;
-  vm: string;
-  agent: string;
+  vm?: string;
+  agent?: string;
   platform?: { name: string; url: string };
 }
 
@@ -201,10 +201,12 @@ export type TargetDiff = {
   stableId: StableEntityId;
   name?: { from: string; to: string };
   position?: { from: { x: number; y: number }; to: { x: number; y: number } };
-  blocks?: BlocksDiff;
+  /** Populated by BlockDiffer — see ProjectDiffer.ts for the full type */
+  blocks?: import("./ProjectDiffer").BlockGraphDiff;
   variables?: VariablesDiff;
 };
 
+/** @deprecated Use BlockGraphDiff from ProjectDiffer instead */
 export type BlocksDiff = {
   added: Record<string, CanonicalBlock>;
   removed: string[];
