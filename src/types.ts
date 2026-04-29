@@ -90,6 +90,22 @@ export interface RawBlock {
 
 // ─── Scratch VM runtime interfaces ───────────────────────────────────────────
 
+/**
+ * Runtime Variable instance shape (scratch-vm's Variable class).
+ *
+ * The project JSON format uses [name, value] arrays, but the *live* runtime
+ * stores proper Variable objects with named properties. toJSON() converts
+ * them back to arrays — we must never bypass this by writing arrays directly
+ * into target.variables.
+ */
+export interface ScratchVariable {
+  id: string;
+  name: string;
+  value: string | number | boolean;
+  type: string; // '' = scalar, 'list', 'broadcast_msg'
+  isCloud: boolean;
+}
+
 export interface ScratchTarget {
   id: string;
   x: number;
@@ -100,8 +116,19 @@ export interface ScratchTarget {
     name: string;
   };
 
-  variables: Record<string, [string, any] | [string, any, boolean]>;
-  lists: Record<string, [string, any[]]>;
+  /**
+   * Maps variable ID → runtime Variable instance.
+   * Use target.createVariable() to add new entries — never assign raw arrays
+   * here; toJSON() reads .name/.value off the Variable class, not indices.
+   */
+  variables: Record<string, ScratchVariable>;
+  lists: Record<string, any>;
+
+  /**
+   * Constructs a proper Variable instance and registers it on this target.
+   * type: '' = scalar (default), 'list', 'broadcast_msg'
+   */
+  createVariable(id: string, name: string, type: string, isCloud: boolean): void;
 
   blocks: {
     getBlock(id: string): ScratchBlock | undefined;

@@ -2,7 +2,7 @@ import { EntityRegistry } from "./EntityRegistry";
 import { MutationLog } from "./MutationLog";
 import { ReplayEngine } from "./ReplayEngine";
 import { StableEntityId } from "./StableEntityId";
-import { ProjectJSON, ScratchVMRuntime, VMOperation } from "./types";
+import { ProjectJSON, ScratchTarget, ScratchVMRuntime, VMOperation } from "./types";
 import { CanonicalDiff, CanonicalProject } from "./canonical/types";
 import { ProjectSerializer } from "./canonical/ProjectSerializer";
 import { ProjectDiffer } from "./canonical/ProjectDiffer";
@@ -30,30 +30,18 @@ export class VMController {
 
     this.project = structuredClone(project);
     await this.vm.loadProject(project);
-
     this.registry.bootstrap(this.vm.runtime.targets);
 
     return this;
   }
 
   applyMutation(op: VMOperation): void {
-    const vmId = this.registry.resolveVmId(op.stableTargetId);
-    if (vmId === undefined) {
-      throw new Error(
-        `EntityRegistry: no VM target for stable ID "${op.stableTargetId}". ` +
-          `Make sure load() was called and the entity exists in this project.`,
-      );
-    }
-
-    const target = this.vm.runtime.getTargetById(vmId);
-    if (!target) {
-      throw new Error(
-        `VM has no target with id "${vmId}" (stable: "${op.stableTargetId}"). ` +
-          `This is a registry/VM sync bug.`,
-      );
-    }
+    const target = this.resolveTarget(op.stableTargetId);
 
     switch (op.type) {
+
+      // ─── Target mutations ───────────────────────────────────────────────
+
       case "TARGET_MOVE": {
         if (op.x !== undefined) target.x = op.x;
         if (op.y !== undefined) target.y = op.y;
@@ -67,12 +55,62 @@ export class VMController {
         break;
       }
 
-      case "BLOCK_SET_VALUE": {
-        const block = target.blocks.getBlock(op.blockId);
-        if (!block) throw new Error(`Block not found: ${op.blockId}`);
+      // ─── Variable mutations ──────────────────────────────────────────────
 
+      case "ADD_VARIABLE": {
+        if (target.variables[op.variableId]) {
+          throw new Error(`Variable "${op.variableId}" already exists on target "${op.stableTargetId}"`);
+        }
+        // createVariable() constructs a real scratch-vm Variable instance so
+        // vm.toJSON() serialises it correctly via .name/.value. Assigning a raw
+        // array directly is silently ignored by toJSON() because it reads named
+        // properties, not numeric indices — giving [null, null] after round-trip.
+        // Variable.SCALAR_TYPE is '' (empty string) in scratch-vm.
+        target.createVariable(op.variableId, op.name, "", op.cloud ?? false);
+        if (op.value !== undefined) {
+          target.variables[op.variableId].value = op.value;
+        }
+        break;
+      }
+
+      case "SET_VARIABLE": {
+        const v = target.variables[op.variableId];
+        if (!v) throw new Error(`Variable "${op.variableId}" not found on target "${op.stableTargetId}"`);
+        // v is a Variable instance — use .value, not array index [1].
+        v.value = op.value;
+        break;
+      }
+
+      case "REMOVE_VARIABLE": {
+        if (!target.variables[op.variableId]) {
+          throw new Error(`Variable "${op.variableId}" not found on target "${op.stableTargetId}"`);
+        }
+        delete target.variables[op.variableId];
+        break;
+      }
+
+      // ─── Block mutations ─────────────────────────────────────────────────
+
+      case "ADD_BLOCK": {
+        if (target.blocks.getBlock(op.blockId)) {
+          throw new Error(`Block "${op.blockId}" already exists on target "${op.stableTargetId}"`);
+        }
+        target.blocks.createBlock({ id: op.blockId, ...op.block });
+        break;
+      }
+
+      case "UPDATE_BLOCK_FIELD": {
+        const block = target.blocks.getBlock(op.blockId);
+        if (!block) throw new Error(`Block "${op.blockId}" not found on target "${op.stableTargetId}"`);
         block.fields ??= {};
         block.fields[op.field] = op.value;
+        break;
+      }
+
+      case "REMOVE_BLOCK": {
+        const block = target.blocks.getBlock(op.blockId);
+        if (!block) throw new Error(`Block "${op.blockId}" not found on target "${op.stableTargetId}"`);
+        target.blocks.deleteBlock(op.blockId);
         break;
       }
 
@@ -80,18 +118,40 @@ export class VMController {
         throw new Error(`Unknown VM operation: ${(op as any).type}`);
     }
 
+    // Record after successful application only
     this.log.record(op);
   }
 
   /**
+   * Resolve a stableTargetId to a live VM target.
+   * Throws with a clear message if either lookup fails.
+   */
+  private resolveTarget(stableTargetId: StableEntityId): ScratchTarget {
+    const vmId = this.registry.resolveVmId(stableTargetId);
+    if (vmId === undefined) {
+      throw new Error(
+        `EntityRegistry: no VM target for stable ID "${stableTargetId}". ` +
+          `Make sure load() was called and the entity exists in this project.`,
+      );
+    }
+    const target = this.vm.runtime.getTargetById(vmId);
+    if (!target) {
+      throw new Error(
+        `VM has no target with id "${vmId}" (stable: "${stableTargetId}"). ` +
+          `This is a registry/VM sync bug.`,
+      );
+    }
+    return target;
+  }
+
+  // ─── Serialization ─────────────────────────────────────────────────────────
+
+  /**
    * Export the current VM state as a plain object.
-   *
-   * scratch-vm's toJSON() returns a JSON string. We always parse it here so
-   * every caller downstream receives a consistent plain object — never a string.
+   * scratch-vm's toJSON() returns a JSON string — we always parse it here.
    */
   serialize(): ProjectJSON {
     if (!this.vm) throw new Error("VM instance not provided!");
-
     const raw = this.vm.toJSON();
     return typeof raw === "string" ? JSON.parse(raw) : raw;
   }
@@ -113,41 +173,22 @@ export class VMController {
     return differ.diff(base, this.toCanonical());
   }
 
-  /** Verify that serialize → reload → serialize produces identical output. */
+  // ─── Utilities ─────────────────────────────────────────────────────────────
+
   async roundTrip(project: ProjectJSON): Promise<{ equal: boolean }> {
     await this.load(project);
     const a = this.serialize();
-
     await this.load(a);
     const b = this.serialize();
-
     return { equal: JSON.stringify(a) === JSON.stringify(b) };
   }
 
-  /** Return all currently-loaded entities with their stable IDs. */
-  getTargets(): Array<{
-    stableId: StableEntityId;
-    vmId: string;
-    name: string;
-  }> {
-    return this.registry.listEntities((id) =>
-      this.vm.runtime.getTargetById(id),
-    );
+  getTargets(): Array<{ stableId: StableEntityId; vmId: string; name: string }> {
+    return this.registry.listEntities((id) => this.vm.runtime.getTargetById(id));
   }
 
-  getVM(): ScratchVMRuntime {
-    return this.vm;
-  }
-
-  getProject(): ProjectJSON | null {
-    return this.project;
-  }
-
-  getMutationLog(): VMOperation[] {
-    return this.log.getAll();
-  }
-
-  getReplayEngine(): ReplayEngine {
-    return new ReplayEngine(this);
-  }
+  getVM(): ScratchVMRuntime { return this.vm; }
+  getProject(): ProjectJSON | null { return this.project; }
+  getMutationLog(): VMOperation[] { return this.log.getAll(); }
+  getReplayEngine(): ReplayEngine { return new ReplayEngine(this); }
 }
