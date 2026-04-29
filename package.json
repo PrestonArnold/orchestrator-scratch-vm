@@ -23,6 +23,7 @@
   "license": "ISC",
   "type": "module",
   "devDependencies": {
+    "@types/node": "^25.6.0",
     "scratch-vm": "^5.0.300",
     "tsup": "^8.5.1",
     "typescript": "^5.9.3"

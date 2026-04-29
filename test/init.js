@@ -4,102 +4,90 @@ import JSZip from "jszip";
 import VM from "scratch-vm";
 import { VMController } from "../dist/index.js";
 
-// -----------------------------
-// Boot VM + Controller
-// -----------------------------
+// ─── Boot VM + Controller ─────────────────────────────────────────────────────
+
 const vm = new VM();
 const controller = new VMController(vm);
 
 await vm.start();
-await controller.init();
 
-// -----------------------------
-// Load SB3
-// -----------------------------
+// ─── Load SB3 ────────────────────────────────────────────────────────────────
+
 const sb3Buffer = await fs.readFile("examples/default.sb3");
-
 const zip = await JSZip.loadAsync(sb3Buffer);
-
 const projectJsonRaw = await zip.file("project.json").async("string");
 const projectJson = JSON.parse(projectJsonRaw);
 
-// -----------------------------
-// Load into VM
-// -----------------------------
 await controller.load(projectJson);
-
 console.log("Project loaded");
 
-// -----------------------------
-// 🔥 TARGET RESOLVER (MVP LOCAL ONLY)
-// -----------------------------
-function getSpriteTarget(vm, nameHint = null) {
-  const targets = vm.runtime.targets;
+// ─── Inspect targets (via stable IDs) ────────────────────────────────────────
 
-  // If name provided, match by sprite name
-  if (nameHint) {
-    const found = targets.find(
-      (t) => !t.isStage && t.sprite?.name === nameHint,
-    );
-    if (found) return found;
-  }
+const targets = controller.getTargets();
+console.log("Targets (stable view):", targets);
 
-  // fallback: first non-stage sprite
-  return targets.find((t) => !t.isStage);
+// Registry debug: shows stable ↔ vm mapping
+console.log("Registry:", controller.registry.debug());
+
+// ─── Resolve sprite by name ───────────────────────────────────────────────────
+
+const spriteEntry = targets.find((t) => t.name === "Sprite1");
+
+if (!spriteEntry) {
+  throw new Error(
+    `Sprite1 not found. Available: ${targets.map((t) => t.name).join(", ")}`,
+  );
 }
 
-// -----------------------------
-// Inspect runtime (debug step)
-// -----------------------------
-console.log(
-  "Targets:",
-  vm.runtime.targets.map((t) => ({
-    id: t.id,
-    name: t.sprite?.name,
-    isStage: t.isStage,
-  })),
-);
+const { stableId } = spriteEntry;
+console.log(`Using Sprite1 → stableId: ${stableId}`);
 
-// -----------------------------
-// Resolve real target
-// -----------------------------
-const sprite = getSpriteTarget(vm, "Sprite1");
+// ─── Mutations (using stableTargetId, not VM id) ──────────────────────────────
 
-if (!sprite) {
-  throw new Error("No sprite found in project");
-}
-
-console.log("Using sprite:", sprite.id);
-
-// -----------------------------
-// Apply mutations using REAL ID
-// -----------------------------
 controller.applyMutation({
   type: "TARGET_MOVE",
-  targetId: sprite.id,
+  stableTargetId: stableId,
   x: 120,
   y: 80,
 });
 
 controller.applyMutation({
   type: "TARGET_RENAME",
-  targetId: sprite.id,
+  stableTargetId: stableId,
   name: "MySprite",
 });
 
-// -----------------------------
-// Export snapshot
-// -----------------------------
-const out = controller.serialize();
+// ─── Mutation log ─────────────────────────────────────────────────────────────
 
-console.log("After mutation:");
-console.log(out);
+const log = controller.getMutationLog();
+console.log("Mutation log:", JSON.stringify(log, null, 2));
 
-// -----------------------------
-// Round-trip validation (MVP gate)
-// -----------------------------
-await controller.load(out);
+// Note: log entries contain stableTargetId — safe to store, send, or serialize.
 
+// ─── Replay engine test ───────────────────────────────────────────────────────
+//
+// This is the scenario that previously crashed:
+//   1. Mutations logged with old VM ids
+//   2. VM reloaded → new VM ids
+//   3. Replay tried to apply old ids → target not found
+//
+// With the stable ID system:
+//   1. Mutations logged with stableTargetId
+//   2. VM reloads → EntityRegistry.bootstrap() maps new vmIds to same stableIds (by name)
+//   3. applyMutation() resolves stableId → new vmId transparently ✓
+
+const replayEngine = controller.getReplayEngine();
+const rebuilt = await replayEngine.replay(log, projectJson);
+
+console.log("Replay succeeded!");
+console.log("Rebuilt targets:", controller.getTargets());
+
+// ─── Round-trip validation ────────────────────────────────────────────────────
+
+await controller.load(rebuilt);
 const final = controller.serialize();
 
-console.log("Round trip equal:", JSON.stringify(out) === JSON.stringify(final));
+console.log(
+  "Round trip equal:",
+  JSON.stringify(rebuilt) === JSON.stringify(final),
+);

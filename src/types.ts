@@ -1,32 +1,34 @@
+import { StableEntityId } from "./StableEntityId";
+
+export type { StableEntityId };
 export type ProjectJSON = any;
 
-// this is very simple.
-// it's just to start.
 export type VMOperation =
   | {
       type: "BLOCK_SET_VALUE";
-      targetId: string;
+      stableTargetId: StableEntityId;
       blockId: string;
       field: string;
       value: any;
     }
   | {
       type: "TARGET_MOVE";
-      targetId: string;
+      stableTargetId: StableEntityId;
       x?: number;
       y?: number;
     }
   | {
       type: "TARGET_RENAME";
-      targetId: string;
+      stableTargetId: StableEntityId;
+      /** The new name to assign. */
       name: string;
     };
 
-// scratch types
 export interface ScratchTarget {
   id: string;
   x: number;
   y: number;
+  isStage?: boolean;
 
   sprite: {
     name: string;
@@ -48,6 +50,7 @@ export interface ScratchVMRuntime {
   clear?: () => Promise<void>;
 
   runtime: {
+    targets: ScratchTarget[];
     getTargetById(id: string): ScratchTarget | undefined;
   };
 
